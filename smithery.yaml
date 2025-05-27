@@ -1,0 +1,8 @@
+name: geo-news-mcp
+services:
+  - name: app
+    dockerfile: Dockerfile
+    ports:
+      - 5000
+    env:
+      - FLASK_ENV=production

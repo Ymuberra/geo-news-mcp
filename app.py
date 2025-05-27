@@ -5,6 +5,9 @@ import json
 
 app = Flask(__name__)
 
+# Global config storage
+CURRENT_CONFIG = {}
+
 # MCP Tools tanımları
 MCP_TOOLS = {
     "get_news_by_country": {
@@ -59,8 +62,23 @@ def home():
 @app.route("/mcp", methods=["GET", "POST"])
 def mcp_endpoint():
     """MCP endpoint as required by Smithery"""
+
+    # Get config from query parameters (Smithery sends config this way)
+    config = {}
+    if request.args:
+        try:
+            config_param = request.args.get('config')
+            if config_param:
+                config = json.loads(config_param)
+        except:
+            pass
+
+    # Store config globally for tool functions
+    global CURRENT_CONFIG
+    CURRENT_CONFIG = config
+
     if request.method == "GET":
-        # Return server capabilities
+        # Return server capabilities for GET requests
         return jsonify({
             "jsonrpc": "2.0",
             "result": {
@@ -78,64 +96,111 @@ def mcp_endpoint():
         })
 
     # Handle POST requests (MCP calls)
-    data = request.get_json()
-    method = data.get("method")
-
-    if method == "tools/list":
-        return jsonify({
-            "jsonrpc": "2.0",
-            "id": data.get("id"),
-            "result": {
-                "tools": list(MCP_TOOLS.values())
-            }
-        })
-
-    elif method == "tools/call":
-        params = data.get("params", {})
-        tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-
-        if tool_name == "get_news_by_country":
-            result = get_news_by_country(arguments)
-        elif tool_name == "search_news":
-            result = search_news(arguments)
-        else:
+    try:
+        data = request.get_json()
+        if not data:
             return jsonify({
                 "jsonrpc": "2.0",
-                "id": data.get("id"),
                 "error": {
-                    "code": -32601,
-                    "message": f"Unknown tool: {tool_name}"
+                    "code": -32700,
+                    "message": "Parse error"
                 }
             })
 
+        method = data.get("method")
+        request_id = data.get("id")
+
+        print(f"MCP Request: {method}")  # Debug logging
+
+        if method == "initialize":
+            # MCP initialization handshake
+            return jsonify({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {
+                        "tools": {
+                            "listChanged": True
+                        }
+                    },
+                    "serverInfo": {
+                        "name": "geo-news-mcp",
+                        "version": "1.0.0"
+                    }
+                }
+            })
+
+        elif method == "tools/list":
+            return jsonify({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "tools": list(MCP_TOOLS.values())
+                }
+            })
+
+        elif method == "tools/call":
+            params = data.get("params", {})
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+
+            print(f"Tool call: {tool_name} with args: {arguments}")  # Debug logging
+
+            if tool_name == "get_news_by_country":
+                result = get_news_by_country(arguments)
+            elif tool_name == "search_news":
+                result = search_news(arguments)
+            else:
+                return jsonify({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Unknown tool: {tool_name}"
+                    }
+                })
+
+            return jsonify({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": result
+                        }
+                    ]
+                }
+            })
+
+        else:
+            return jsonify({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Unknown method: {method}"
+                }
+            })
+
+    except Exception as e:
+        print(f"MCP Error: {str(e)}")  # Debug logging
         return jsonify({
             "jsonrpc": "2.0",
-            "id": data.get("id"),
-            "result": {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": result
-                    }
-                ]
+            "error": {
+                "code": -32603,
+                "message": f"Internal error: {str(e)}"
             }
         })
-
-    return jsonify({
-        "jsonrpc": "2.0",
-        "id": data.get("id"),
-        "error": {
-            "code": -32601,
-            "message": f"Unknown method: {method}"
-        }
-    })
 
 def get_news_by_country(arguments):
     """Get news by country using NewsAPI"""
     country = arguments.get("country", "us")
     category = arguments.get("category", "general")
-    api_key = os.environ.get("NEWS_API_KEY", "f6f44383e2f24650acf005a04bba7cf1")
+
+    # Get API key from config or environment
+    api_key = CURRENT_CONFIG.get("newsApiKey") or os.environ.get("NEWS_API_KEY", "f6f44383e2f24650acf005a04bba7cf1")
 
     try:
         url = f"https://newsapi.org/v2/top-headlines"
@@ -172,7 +237,9 @@ def search_news(arguments):
     """Search news by keyword using NewsAPI"""
     query = arguments.get("query")
     language = arguments.get("language", "en")
-    api_key = os.environ.get("NEWS_API_KEY", "f6f44383e2f24650acf005a04bba7cf1")
+
+    # Get API key from config or environment
+    api_key = CURRENT_CONFIG.get("newsApiKey") or os.environ.get("NEWS_API_KEY", "f6f44383e2f24650acf005a04bba7cf1")
 
     try:
         url = f"https://newsapi.org/v2/everything"

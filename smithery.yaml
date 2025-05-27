@@ -3,8 +3,8 @@ startCommand:
   configSchema:
     type: object
     properties:
-      apiKey:
+      newsApiKey:
         type: string
         title: "News API Key"
-        description: "Your NewsAPI.org API key"
+        description: "Your NewsAPI.org API key for fetching news data"
         default: "f6f44383e2f24650acf005a04bba7cf1"

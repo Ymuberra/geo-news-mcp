@@ -1,8 +1,14 @@
-name: geo-news-mcp
-services:
-  - name: app
-    dockerfile: Dockerfile
-    ports:
-      - 5000
-    env:
-      - FLASK_ENV=production
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    properties:
+      apiKey:
+        type: string
+        title: "News API Key"
+        description: "Your NewsAPI.org API key"
+        default: "f6f44383e2f24650acf005a04bba7cf1"
+
+build:
+  dockerfile: Dockerfile
+  dockerBuildPath: .
